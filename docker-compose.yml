@@ -1,0 +1,54 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: auditorsec-db
+    environment:
+      POSTGRES_USER: audit_user
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme}
+      POSTGRES_DB: auditorsec_poc
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./analytics/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U audit_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  soc:
+    build:
+      context: ./soc
+      dockerfile: Dockerfile
+    container_name: auditorsec-soc
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://audit_user:${DB_PASSWORD:-changeme}@postgres:5432/auditorsec_poc
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./soc:/app
+    restart: unless-stopped
+
+  metabase:
+    image: metabase/metabase:latest
+    container_name: auditorsec-analytics
+    depends_on:
+      - postgres
+    environment:
+      MB_DB_TYPE: postgres
+      MB_DB_DBNAME: auditorsec_poc
+      MB_DB_HOST: postgres
+      MB_DB_USER: audit_user
+      MB_DB_PASS: ${DB_PASSWORD:-changeme}
+    ports:
+      - "3000:3000"
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
