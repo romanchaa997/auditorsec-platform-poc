@@ -1,22 +1,25 @@
-# Production Dockerfile for auditorsec-platform-poc
-# Runs the complete stack with docker-compose orchestration
+# Production Dockerfile for auditorsec-platform-poc SOC Service
+# Lightweight Python/FastAPI-based Security Operations Center
 
-FROM docker:latest
+FROM python:3.11-slim
 
-# Install docker-compose
-RUN apk add --no-cache python3 py3-pip && \
-    pip3 install docker-compose
-
-# Copy project files
+# Set working directory
 WORKDIR /app
-COPY . .
 
-# Expose ports for all services
-EXPOSE 8000 3000 5432
+# Copy requirements and install dependencies
+COPY soc/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Health check for the main API
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-  CMD curl -f http://localhost:8000/health || exit 1
+# Copy SOC service code
+COPY soc/ /app/
+COPY analytics/schema.sql /app/schema.sql
 
-# Start all services using docker-compose
-CMD ["docker-compose", "up"]
+# Expose API port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+  CMD python -c "import requests; requests.get('http://localhost:8000/health')"
+
+# Run SOC service on all interfaces
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
